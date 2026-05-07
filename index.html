@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Made to Thrive — Check In</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+:root { --blue:#2B5F8E; --pink:#F0337A; --green:#1a9e5c; --red:#c0392b; --yellow:#f1c40f; --dark:#1a1a2e; }
+
+body { font-family:Georgia,serif; background:var(--dark); min-height:100vh; display:flex; flex-direction:column; align-items:center; overflow-x:hidden; transition:background 0.5s; }
+body.valid   { background:var(--green); }
+body.invalid { background:var(--red); }
+body.already { background:var(--yellow); }
+body.already .result-name, body.already .status-text { color:#333; }
+body.already #next-btn { color:#333; border-color:rgba(0,0,0,0.2); background:rgba(0,0,0,0.08); }
+
+header { width:100%; background:var(--blue); padding:14px 20px; text-align:center; }
+header h1 { color:#fff; font-size:18px; font-weight:normal; letter-spacing:1px; }
+header p  { color:rgba(255,255,255,0.6); font-size:11px; letter-spacing:2px; text-transform:uppercase; margin-top:3px; font-family:Arial,sans-serif; }
+
+/* SETUP */
+#setup { width:100%; max-width:480px; padding:32px 16px; text-align:center; }
+#setup h2 { color:#fff; font-size:20px; font-weight:normal; margin-bottom:10px; }
+#setup p  { color:rgba(255,255,255,0.6); font-size:13px; font-family:Arial,sans-serif; line-height:1.7; margin-bottom:24px; }
+#load-btn { width:100%; padding:16px; background:var(--pink); color:#fff; border:none; border-radius:10px; font-size:16px; font-family:Arial,sans-serif; letter-spacing:1px; cursor:pointer; }
+#load-btn:disabled { opacity:0.5; cursor:not-allowed; }
+#status-msg { margin-top:14px; color:rgba(255,255,255,0.6); font-size:13px; font-family:Arial,sans-serif; min-height:20px; }
+
+/* SCANNER */
+#scanner { display:none; width:100%; flex-direction:column; align-items:center; padding-bottom:80px; }
+.cam-wrap { width:100%; max-width:480px; padding:16px 16px 0; }
+#cam-box { position:relative; width:100%; border-radius:16px; overflow:hidden; background:#000; aspect-ratio:1; }
+#video { width:100%; height:100%; object-fit:cover; display:block; }
+#canvas { display:none; }
+.overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+.scan-box { width:58%; height:58%; border:3px solid var(--pink); border-radius:12px; box-shadow:0 0 0 9999px rgba(0,0,0,0.5); animation:pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{border-color:var(--pink)} 50%{border-color:rgba(255,255,255,0.8)} }
+.hint  { text-align:center; color:rgba(255,255,255,0.45); font-size:12px; font-family:Arial,sans-serif; margin:8px 0 0; letter-spacing:1px; }
+.debug { text-align:center; color:rgba(255,255,255,0.3); font-size:11px; font-family:monospace; margin:3px 0 0; }
+#cam-btn { display:none; margin:10px auto 0; padding:13px 28px; background:var(--pink); color:#fff; border:none; border-radius:50px; font-size:14px; font-family:Arial,sans-serif; cursor:pointer; }
+
+/* RESULT */
+#result { display:none; width:calc(100% - 32px); max-width:480px; margin:16px 16px 0; background:rgba(255,255,255,0.18); backdrop-filter:blur(10px); border-radius:18px; padding:28px 24px; text-align:center; animation:up 0.35s ease; }
+@keyframes up { from{transform:translateY(24px);opacity:0} to{transform:translateY(0);opacity:1} }
+.status-icon { font-size:52px; margin-bottom:12px; }
+.result-name { color:#fff; font-size:30px; font-weight:normal; margin-bottom:6px; }
+.status-text { color:rgba(255,255,255,0.8); font-size:13px; font-family:Arial,sans-serif; letter-spacing:2px; text-transform:uppercase; }
+#next-btn { display:none; margin:16px auto 0; padding:13px 34px; background:rgba(255,255,255,0.18); color:#fff; border:2px solid rgba(255,255,255,0.4); border-radius:50px; font-size:15px; font-family:Arial,sans-serif; cursor:pointer; letter-spacing:1px; }
+
+/* STICKY COUNTER BAR */
+#counter-bar { display:none; position:fixed; bottom:0; left:0; right:0; background:var(--blue); padding:12px 20px; z-index:100; flex-direction:row; align-items:center; justify-content:space-between; box-shadow:0 -4px 20px rgba(0,0,0,0.3); }
+#counter-bar .count-text { color:#fff; font-family:Arial,sans-serif; font-size:15px; font-weight:bold; }
+#counter-bar .count-sub  { color:rgba(255,255,255,0.6); font-family:Arial,sans-serif; font-size:11px; margin-top:2px; }
+#see-all-btn { background:var(--pink); color:#fff; border:none; border-radius:50px; padding:8px 16px; font-size:12px; font-family:Arial,sans-serif; font-weight:bold; cursor:pointer; white-space:nowrap; }
+
+/* MODAL */
+#modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:200; flex-direction:column; }
+#modal-header { background:var(--blue); padding:16px 20px; display:flex; align-items:center; justify-content:space-between; }
+#modal-header h2 { color:#fff; font-size:16px; font-weight:normal; font-family:Arial,sans-serif; }
+#modal-header .modal-count { color:rgba(255,255,255,0.7); font-size:13px; font-family:Arial,sans-serif; }
+#close-modal { background:rgba(255,255,255,0.15); color:#fff; border:none; border-radius:50px; padding:6px 14px; font-size:13px; font-family:Arial,sans-serif; cursor:pointer; }
+#modal-list { flex:1; overflow-y:auto; padding:12px 16px 20px; }
+.modal-item { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-radius:10px; margin-bottom:6px; font-family:Arial,sans-serif; font-size:14px; background:rgba(255,255,255,0.07); color:rgba(255,255,255,0.55); }
+.modal-item.checked { background:rgba(26,158,92,0.25); color:#fff; }
+.modal-item .check { font-size:15px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Made to Thrive</h1>
+  <p>Event Check-In</p>
+</header>
+
+<!-- STICKY COUNTER BAR -->
+<div id="counter-bar">
+  <div>
+    <div class="count-text"><span id="bar-cnt">0</span> of <span id="bar-tot">0</span> checked in</div>
+    <div class="count-sub">Live from Google Sheets</div>
+  </div>
+  <button id="see-all-btn" onclick="openModal()">See All</button>
+</div>
+
+<!-- MODAL -->
+<div id="modal">
+  <div id="modal-header">
+    <div>
+      <h2>All Registrations</h2>
+      <div class="modal-count"><span id="modal-cnt">0</span> of <span id="modal-tot">0</span> checked in</div>
+    </div>
+    <button id="close-modal" onclick="closeModal()">✕ Close</button>
+  </div>
+  <div id="modal-list"></div>
+</div>
+
+<!-- SETUP -->
+<div id="setup">
+  <h2>Ready to check in</h2>
+  <p>Tap below to load your confirmed attendees live from Google Sheets.</p>
+  <button id="load-btn" onclick="loadAttendees()">Load Attendees</button>
+  <div id="status-msg"></div>
+</div>
+
+<!-- SCANNER -->
+<div id="scanner">
+  <div class="cam-wrap">
+    <div id="cam-box">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="overlay"><div class="scan-box"></div></div>
+    </div>
+    <p class="hint">Point at QR code to scan</p>
+    <p class="debug" id="dbg">Tap button to start camera</p>
+    <button id="cam-btn" onclick="startCamera()">📷 Start Camera</button>
+  </div>
+  <div id="result">
+    <div class="status-icon" id="ico"></div>
+    <div class="result-name" id="rname"></div>
+    <div class="status-text" id="rtxt"></div>
+  </div>
+  <button id="next-btn" onclick="resetScanner()">Scan Next →</button>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbykQ8n4125X3cm-X-mLDnTisRI6qz1eMH4wSzXcoK-8pB21Yjs2F_zqt5Ppj8Mz02VUZQ/exec';
+
+var attendees = {};
+var scanning  = false;
+var rafId     = null;
+
+// ── LOAD ATTENDEES FROM GOOGLE SHEET ─────────────────────────
+function loadAttendees() {
+  var btn = document.getElementById('load-btn');
+  var msg = document.getElementById('status-msg');
+  btn.disabled = true;
+  btn.textContent = 'Loading...';
+  msg.textContent = 'Fetching from Google Sheets...';
+
+  fetch(APPS_SCRIPT_URL + '?action=getAttendees')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      attendees = data;
+      var count = Object.keys(attendees).length;
+      if (count === 0) {
+        msg.textContent = '⚠️ No attendees found. Check your Check In sheet has data.';
+        btn.disabled = false;
+        btn.textContent = 'Try Again';
+        return;
+      }
+      msg.textContent = '✅ ' + count + ' attendees loaded!';
+      setTimeout(function() {
+        document.getElementById('setup').style.display = 'none';
+        var sc = document.getElementById('scanner');
+        sc.style.display = 'flex';
+        buildList();
+        document.getElementById('cam-btn').style.display = 'block';
+        document.getElementById('dbg').textContent = 'Tap button above to start camera';
+        document.getElementById('counter-bar').style.display = 'flex';
+      }, 800);
+    })
+    .catch(function(err) {
+      msg.textContent = '❌ Error loading attendees: ' + err.message;
+      btn.disabled = false;
+      btn.textContent = 'Try Again';
+    });
+}
+
+// ── BUILD LIST & COUNTER ──────────────────────────────────────
+function buildList() {
+  var total = Object.keys(attendees).length;
+  var checked = Object.values(attendees).filter(function(a){ return a.checkedIn; }).length;
+  document.getElementById('bar-tot').textContent   = total;
+  document.getElementById('bar-cnt').textContent   = checked;
+  document.getElementById('modal-tot').textContent = total;
+  document.getElementById('modal-cnt').textContent = checked;
+  rebuildModal();
+}
+
+function rebuildModal() {
+  var ml = document.getElementById('modal-list');
+  ml.innerHTML = '';
+  var sorted = Object.keys(attendees).sort(function(a,b) {
+    return (attendees[a].first + attendees[a].last).localeCompare(attendees[b].first + attendees[b].last);
+  });
+  sorted.forEach(function(tok) {
+    var a   = attendees[tok];
+    var div = document.createElement('div');
+    div.className = 'modal-item' + (a.checkedIn ? ' checked' : '');
+    div.id = 'modal-row-' + tok;
+    div.innerHTML = '<span>' + a.first + ' ' + a.last + '</span><span class="check">' + (a.checkedIn ? '✓' : '') + '</span>';
+    ml.appendChild(div);
+  });
+}
+
+function markIn(tok) {
+  var checked = Object.values(attendees).filter(function(a){ return a.checkedIn; }).length;
+  document.getElementById('bar-cnt').textContent   = checked;
+  document.getElementById('modal-cnt').textContent = checked;
+  var row = document.getElementById('modal-row-' + tok);
+  if (row) {
+    row.classList.add('checked');
+    row.querySelector('.check').textContent = '✓';
+  }
+}
+
+function openModal()  { document.getElementById('modal').style.display = 'flex'; }
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+// ── CAMERA ────────────────────────────────────────────────────
+function startCamera() {
+  var btn = document.getElementById('cam-btn');
+  var dbg = document.getElementById('dbg');
+  btn.style.display = 'none';
+  dbg.textContent = 'Requesting camera...';
+
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}})
+  .then(function(stream) {
+    var v = document.getElementById('video');
+    v.srcObject = stream;
+    dbg.textContent = 'Starting...';
+    v.play().then(function() { waitForFrames(v, 0); })
+             .catch(function(err) { dbg.textContent = 'Play error: '+err.name; btn.style.display='block'; });
+  })
+  .catch(function(err) {
+    dbg.textContent = 'Camera error: ' + err.name;
+    btn.style.display = 'block';
+  });
+}
+
+function waitForFrames(v, count) {
+  var dbg = document.getElementById('dbg');
+  if (v.videoWidth > 0 || count > 15) {
+    dbg.textContent = 'Scanning...';
+    scanning = true;
+    tick();
+  } else {
+    dbg.textContent = 'Starting (' + count + ')...';
+    setTimeout(function(){ waitForFrames(v, count+1); }, 200);
+  }
+}
+
+// ── SCAN LOOP ─────────────────────────────────────────────────
+function tick() {
+  if (!scanning) return;
+  var v   = document.getElementById('video');
+  var c   = document.getElementById('canvas');
+  var dbg = document.getElementById('dbg');
+  var w   = v.videoWidth  || 480;
+  var h   = v.videoHeight || 640;
+  c.width = w; c.height = h;
+  var ctx = c.getContext('2d');
+  ctx.drawImage(v, 0, 0, w, h);
+  try {
+    var img  = ctx.getImageData(0, 0, w, h);
+    var code = jsQR(img.data, img.width, img.height, {inversionAttempts:'attemptBoth'});
+    if (dbg) dbg.textContent = 'Scanning ' + w + 'x' + h + (code ? ' ✓' : '');
+    if (code) { handleScan(code.data); return; }
+  } catch(e) {
+    if (dbg) dbg.textContent = 'Error: ' + e.message;
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+// ── HANDLE SCAN ───────────────────────────────────────────────
+function handleScan(data) {
+  scanning = false;
+  cancelAnimationFrame(rafId);
+  var tok = data.split('|')[0].trim().toUpperCase().substring(0,6);
+
+  if (!attendees[tok]) {
+    // Invalid — not on list
+    document.body.className = 'invalid';
+    document.getElementById('ico').textContent   = '❌';
+    document.getElementById('rname').textContent = 'Not Recognised';
+    document.getElementById('rtxt').textContent  = 'Invalid QR Code';
+    document.getElementById('result').style.display   = 'block';
+    document.getElementById('next-btn').style.display = 'block';
+
+  } else if (attendees[tok].checkedIn) {
+    // Already checked in (in memory)
+    document.body.className = 'already';
+    document.getElementById('ico').textContent   = '⚠️';
+    document.getElementById('rname').textContent = attendees[tok].first + ' ' + attendees[tok].last;
+    document.getElementById('rtxt').textContent  = 'Already Checked In';
+    document.getElementById('result').style.display   = 'block';
+    document.getElementById('next-btn').style.display = 'block';
+
+  } else {
+    // Valid — show pending while server confirms
+    document.getElementById('ico').textContent   = '⏳';
+    document.getElementById('rname').textContent = attendees[tok].first + ' ' + attendees[tok].last;
+    document.getElementById('rtxt').textContent  = 'Confirming...';
+    document.getElementById('result').style.display = 'block';
+
+    // Call Apps Script to record check-in
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'recordCheckIn', token: tok }),
+      headers: { 'Content-Type': 'application/json' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(response) {
+      if (response.duplicate) {
+        // Server says already checked in
+        attendees[tok].checkedIn = true;
+        markIn(tok);
+        document.body.className = 'already';
+        document.getElementById('ico').textContent  = '⚠️';
+        document.getElementById('rtxt').textContent = 'Already Checked In';
+      } else if (response.error) {
+        // Server busy — ask to scan again
+        document.body.className = 'already';
+        document.getElementById('ico').textContent  = '⚠️';
+        document.getElementById('rtxt').textContent = 'Server busy — scan again';
+      } else {
+        // Server confirmed — show green
+        attendees[tok].checkedIn = true;
+        markIn(tok);
+        document.body.className = 'valid';
+        document.getElementById('ico').textContent  = '✅';
+        document.getElementById('rtxt').textContent = 'Checked In';
+      }
+      document.getElementById('next-btn').style.display = 'block';
+    })
+    .catch(function(err) {
+      // Connection error — show yellow, ask to scan again
+      document.body.className = 'already';
+      document.getElementById('ico').textContent  = '⚠️';
+      document.getElementById('rtxt').textContent = 'Connection error — scan again';
+      document.getElementById('next-btn').style.display = 'block';
+    });
+  }
+}
+
+// ── RESET ─────────────────────────────────────────────────────
+function resetScanner() {
+  document.body.className = '';
+  document.getElementById('result').style.display   = 'none';
+  document.getElementById('next-btn').style.display = 'none';
+  scanning = true;
+  tick();
+}
+</script>
+</body>
+</html>
