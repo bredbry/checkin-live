@@ -139,6 +139,8 @@ function loadAttendees() {
         return;
       }
       msg.textContent = '✅ ' + count + ' attendees loaded!';
+      // Warm up the script immediately so check-ins are faster
+      fetch(APPS_SCRIPT_URL+'?action=ping').catch(function(){});
       setTimeout(function(){
         document.getElementById('setup').style.display = 'none';
         document.getElementById('scanner').style.display = 'flex';
@@ -256,7 +258,7 @@ function handleScan(data) {
     document.getElementById('rtxt').textContent='Confirming...';
     document.getElementById('result').style.display='block';
 
-    fetch(APPS_SCRIPT_URL+'?action=recordCheckIn&token='+encodeURIComponent(tok))
+    fetch(APPS_SCRIPT_URL+'?action=recordCheckIn&token='+encodeURIComponent(tok)+'&name='+encodeURIComponent(attendees[tok].first+' '+attendees[tok].last))
       .then(function(r){ return r.json(); })
       .then(function(response){
         if(response.duplicate){
